@@ -1,29 +1,14 @@
-/**
- * Human-API WebUI 管理后台 - 前端主逻辑
- *
- * 负责：
- * - WebSocket 连接管理与实时消息接收
- * - 会话列表渲染与筛选
- * - 聊天消息展示
- * - 人工回复提交
- * - 系统设置管理
- * - Toast 通知
- */
-
 (function () {
     "use strict";
 
-    // ==================== 状态 ====================
-    let socket = null;
-    let sessions = {};          // id -> session 对象
-    let selectedSessionId = null;
-    let filterStatus = "all";
+    var socket = null;
+    var sessions = {};
+    var selectedSessionId = null;
+    var filterStatus = "all";
 
-    // ==================== DOM 引用 ====================
-    const $ = (sel) => document.querySelector(sel);
-    const $$ = (sel) => document.querySelectorAll(sel);
+    var $ = function (sel) { return document.querySelector(sel); };
 
-    const dom = {
+    var dom = {
         sessionList: $("#session-list"),
         chatEmpty: $("#chat-empty"),
         chatActive: $("#chat-active"),
@@ -50,7 +35,6 @@
         toastContainer: $("#toast-container"),
     };
 
-    // ==================== 工具函数 ====================
     function toast(msg, type) {
         if (type === undefined) type = "info";
         var el = document.createElement("div");
@@ -59,7 +43,8 @@
         dom.toastContainer.appendChild(el);
         setTimeout(function () {
             el.style.opacity = "0";
-            el.style.transition = "opacity 0.3s";
+            el.style.transform = "translateX(30px)";
+            el.style.transition = "all 0.3s ease";
             setTimeout(function () { el.remove(); }, 300);
         }, 3000);
     }
@@ -70,9 +55,7 @@
             var d = new Date(isoStr);
             var pad = function (n) { return n < 10 ? "0" + n : "" + n; };
             return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
-        } catch (e) {
-            return isoStr;
-        }
+        } catch (e) { return isoStr; }
     }
 
     function formatDateTime(isoStr) {
@@ -82,9 +65,7 @@
             var pad = function (n) { return n < 10 ? "0" + n : "" + n; };
             return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + " " +
                 pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
-        } catch (e) {
-            return isoStr;
-        }
+        } catch (e) { return isoStr; }
     }
 
     function escapeHtml(text) {
@@ -98,7 +79,6 @@
         return map[status] || status;
     }
 
-    // ==================== WebSocket ====================
     function initSocket() {
         socket = io({
             transports: ["websocket", "polling"],
@@ -121,9 +101,7 @@
                 data.sessions.forEach(function (s) { sessions[s.id] = s; });
                 renderSessionList();
             }
-            if (data.config) {
-                applyConfig(data.config);
-            }
+            if (data.config) { applyConfig(data.config); }
             updateStats();
         });
 
@@ -179,13 +157,12 @@
             osc.connect(gain);
             gain.connect(ctx.destination);
             osc.frequency.value = 800;
-            gain.gain.value = 0.1;
+            gain.gain.value = 0.08;
             osc.start();
             osc.stop(ctx.currentTime + 0.15);
         } catch (e) { }
     }
 
-    // ==================== 会话列表 ====================
     function renderSessionList() {
         var list = Object.values(sessions);
         list.sort(function (a, b) {
@@ -199,7 +176,7 @@
         }
 
         if (list.length === 0) {
-            dom.sessionList.innerHTML = '<div class="empty-state">暂无会话，等待外部请求...</div>';
+            dom.sessionList.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128172;</div>暂无会话，等待外部请求...</div>';
             return;
         }
 
@@ -207,9 +184,10 @@
         list.forEach(function (s) {
             var activeClass = s.id === selectedSessionId ? " active" : "";
             var preview = getSessionPreview(s);
+            var avatar = s.status === "waiting" ? "&#128100;" : "&#129302;";
             html += '<div class="session-item' + activeClass + '" data-id="' + s.id + '">' +
                 '<div class="session-item-header">' +
-                '<span class="session-id">' + escapeHtml(s.id) + '</span>' +
+                '<span class="session-id">' + avatar + " " + escapeHtml(s.id.substring(0, 12)) + '</span>' +
                 '<span class="session-status ' + s.status + '">' + statusLabel(s.status) + '</span>' +
                 '</div>' +
                 '<div class="session-preview">' + escapeHtml(preview) + '</div>' +
@@ -239,7 +217,6 @@
         return "(无消息内容)";
     }
 
-    // ==================== 会话选中 ====================
     function selectSession(sessionId) {
         selectedSessionId = sessionId;
         renderSessionList();
@@ -253,13 +230,9 @@
         renderSessionList();
     }
 
-    // ==================== 聊天面板 ====================
     function renderChatPanel(sessionId) {
         var session = sessions[sessionId];
-        if (!session) {
-            deselectSession();
-            return;
-        }
+        if (!session) { deselectSession(); return; }
 
         dom.chatEmpty.style.display = "none";
         dom.chatActive.style.display = "flex";
@@ -270,20 +243,19 @@
         dom.chatModel.textContent = session.model || "";
         dom.chatTime.textContent = formatDateTime(session.created_at);
 
-        // 如果消息列表不完整，请求完整数据
         if (!session.messages || session.messages.length === 0) {
             socket.emit("request_messages", { session_id: sessionId });
         } else {
             renderMessages(session.messages);
         }
 
-        // 控制回复区
         if (session.status === "waiting") {
             dom.replyArea.classList.remove("disabled");
             dom.replyInput.disabled = false;
             dom.btnSendReply.disabled = false;
             dom.replyInput.placeholder = "输入回复内容... Ctrl+Enter 发送";
             dom.replyHint.textContent = "回复将以 AI 身份返回给调用方";
+            dom.replyInput.focus();
         } else {
             dom.replyArea.classList.add("disabled");
             dom.replyInput.disabled = true;
@@ -302,21 +274,28 @@
         }
 
         var html = "";
-        messages.forEach(function (msg) {
+        messages.forEach(function (msg, idx) {
             var role = msg.role || "user";
             var content = msg.content || "";
+            var delay = Math.min(idx * 0.05, 0.3);
 
             if (role === "system") {
-                html += '<div class="message system">[系统] ' + escapeHtml(content) + '</div>';
+                html += '<div class="message system" style="animation-delay:' + delay + 's">[系统] ' + escapeHtml(content) + '</div>';
             } else if (role === "user") {
-                html += '<div class="message user">' +
+                html += '<div class="message-row user" style="animation: msg-in 0.3s cubic-bezier(0.34,1.56,0.64,1) ' + delay + 's both">' +
+                    '<div class="message-avatar">&#128100;</div>' +
+                    '<div class="message user">' +
                     '<div class="message-label">用户</div>' +
                     escapeHtml(content) +
+                    '</div>' +
                     '</div>';
             } else if (role === "assistant") {
-                html += '<div class="message assistant">' +
+                html += '<div class="message-row assistant" style="animation: msg-in 0.3s cubic-bezier(0.34,1.56,0.64,1) ' + delay + 's both">' +
+                    '<div class="message-avatar">&#129302;</div>' +
+                    '<div class="message assistant">' +
                     '<div class="message-label">AI（你）</div>' +
                     escapeHtml(content) +
+                    '</div>' +
                     '</div>';
             }
         });
@@ -325,17 +304,10 @@
         dom.chatMessages.scrollTop = dom.chatMessages.scrollHeight;
     }
 
-    // ==================== 发送回复 ====================
     function sendReply() {
         var content = dom.replyInput.value.trim();
-        if (!content) {
-            toast("回复内容不能为空", "error");
-            return;
-        }
-        if (!selectedSessionId) {
-            toast("请先选择一个会话", "error");
-            return;
-        }
+        if (!content) { toast("回复内容不能为空", "error"); return; }
+        if (!selectedSessionId) { toast("请先选择一个会话", "error"); return; }
 
         dom.btnSendReply.disabled = true;
         dom.btnSendReply.textContent = "发送中...";
@@ -343,10 +315,7 @@
         fetch("/api/admin/reply", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                session_id: selectedSessionId,
-                content: content,
-            }),
+            body: JSON.stringify({ session_id: selectedSessionId, content: content }),
         })
             .then(function (res) { return res.json(); })
             .then(function (data) {
@@ -355,13 +324,8 @@
                     dom.replyInput.value = "";
                     if (sessions[selectedSessionId]) {
                         sessions[selectedSessionId].status = "replied";
-                        if (!sessions[selectedSessionId].messages) {
-                            sessions[selectedSessionId].messages = [];
-                        }
-                        sessions[selectedSessionId].messages.push({
-                            role: "assistant",
-                            content: content,
-                        });
+                        if (!sessions[selectedSessionId].messages) sessions[selectedSessionId].messages = [];
+                        sessions[selectedSessionId].messages.push({ role: "assistant", content: content });
                         renderChatPanel(selectedSessionId);
                         renderSessionList();
                         updateStats();
@@ -370,16 +334,13 @@
                     toast(data.error || "发送失败", "error");
                 }
             })
-            .catch(function (err) {
-                toast("网络错误: " + err.message, "error");
-            })
+            .catch(function (err) { toast("网络错误: " + err.message, "error"); })
             .finally(function () {
                 dom.btnSendReply.disabled = false;
-                dom.btnSendReply.textContent = "发送回复";
+                dom.btnSendReply.textContent = "发送";
             });
     }
 
-    // ==================== 统计 ====================
     function updateStats() {
         var all = Object.values(sessions);
         var total = all.length;
@@ -394,17 +355,10 @@
         dom.totalCount.textContent = total;
     }
 
-    // ==================== 配置 ====================
     function applyConfig(cfg) {
-        if (cfg.api_key && cfg.api_key !== "***") {
-            dom.settingApiKey.value = cfg.api_key;
-        }
-        if (cfg.timeout) {
-            dom.settingTimeout.value = cfg.timeout;
-        }
-        if (cfg.timeout_reply) {
-            dom.settingTimeoutReply.value = cfg.timeout_reply;
-        }
+        if (cfg.api_key && cfg.api_key !== "***") dom.settingApiKey.value = cfg.api_key;
+        if (cfg.timeout) dom.settingTimeout.value = cfg.timeout;
+        if (cfg.timeout_reply) dom.settingTimeoutReply.value = cfg.timeout_reply;
     }
 
     function loadConfig() {
@@ -424,10 +378,7 @@
         if (!isNaN(timeout) && timeout >= 10) updates.timeout = timeout;
         if (timeoutReply) updates.timeout_reply = timeoutReply;
 
-        if (Object.keys(updates).length === 0) {
-            toast("没有需要保存的设置", "warning");
-            return;
-        }
+        if (Object.keys(updates).length === 0) { toast("没有需要保存的设置", "warning"); return; }
 
         fetch("/api/admin/config", {
             method: "POST",
@@ -436,15 +387,10 @@
         })
             .then(function (res) { return res.json(); })
             .then(function (data) {
-                if (data.success) {
-                    toast("设置已保存", "success");
-                } else {
-                    toast(data.error || "保存失败", "error");
-                }
+                if (data.success) toast("设置已保存", "success");
+                else toast(data.error || "保存失败", "error");
             })
-            .catch(function (err) {
-                toast("网络错误: " + err.message, "error");
-            });
+            .catch(function (err) { toast("网络错误: " + err.message, "error"); });
     }
 
     function clearAllSessions() {
@@ -464,12 +410,9 @@
                     toast(data.error || "操作失败", "error");
                 }
             })
-            .catch(function (err) {
-                toast("网络错误: " + err.message, "error");
-            });
+            .catch(function (err) { toast("网络错误: " + err.message, "error"); });
     }
 
-    // ==================== 事件绑定 ====================
     function bindEvents() {
         dom.btnSendReply.addEventListener("click", sendReply);
 
@@ -494,7 +437,6 @@
         dom.btnClearAll.addEventListener("click", clearAllSessions);
     }
 
-    // ==================== 初始化 ====================
     function init() {
         initSocket();
         bindEvents();

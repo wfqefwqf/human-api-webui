@@ -3,15 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Human-API 管理后台</title>
+    <title>Human-API WebUI</title>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
     <div class="app">
-        <!-- 顶部导航栏 -->
         <header class="header">
             <div class="header-left">
-                <span class="logo">Human-API</span>
+                <span class="logo">Human-API<span class="logo-dot"></span></span>
                 <span class="subtitle">真人 AI 管理后台</span>
             </div>
             <div class="header-right">
@@ -35,12 +34,10 @@
             </div>
         </header>
 
-        <!-- 主体区域：左侧会话列表 + 中间聊天 + 右侧设置 -->
         <main class="main">
-            <!-- 左侧：会话列表 -->
             <aside class="sidebar" id="sidebar">
                 <div class="sidebar-header">
-                    <h3>会话列表</h3>
+                    <h3>会话</h3>
                     <div class="sidebar-actions">
                         <button class="btn-icon" id="btn-refresh" title="刷新列表">&#8635;</button>
                         <select id="filter-status" class="filter-select">
@@ -52,11 +49,13 @@
                     </div>
                 </div>
                 <div class="session-list" id="session-list">
-                    <div class="empty-state">暂无会话，等待外部请求...</div>
+                    <div class="empty-state">
+                        <div class="empty-state-icon">&#128172;</div>
+                        暂无会话，等待外部请求...
+                    </div>
                 </div>
             </aside>
 
-            <!-- 中间：聊天/回复区 -->
             <section class="chat-panel" id="chat-panel">
                 <div class="chat-empty" id="chat-empty">
                     <div class="chat-empty-icon">&#128172;</div>
@@ -72,24 +71,21 @@
                             <span class="chat-time" id="chat-time"></span>
                         </div>
                     </div>
-                    <div class="chat-messages" id="chat-messages">
-                        <!-- 消息渲染区域 -->
-                    </div>
+                    <div class="chat-messages" id="chat-messages"></div>
                     <div class="reply-area" id="reply-area">
                         <div class="reply-input-wrap">
                             <textarea id="reply-input" placeholder="输入回复内容... Ctrl+Enter 发送" rows="3"></textarea>
                         </div>
                         <div class="reply-actions">
                             <span class="reply-hint" id="reply-hint">回复将以 AI 身份返回给调用方</span>
-                            <button class="btn btn-primary" id="btn-send-reply">发送回复</button>
+                            <button class="btn btn-primary" id="btn-send-reply">发送</button>
                         </div>
                     </div>
                 </div>
             </section>
 
-            <!-- 右侧：系统设置 -->
             <aside class="settings-panel" id="settings-panel">
-                <h3>系统设置</h3>
+                <h3>设置</h3>
                 <div class="settings-section">
                     <label>API 访问密钥</label>
                     <input type="text" id="setting-api-key" placeholder="留空则不鉴权" autocomplete="off">
@@ -124,7 +120,6 @@
         </main>
     </div>
 
-    <!-- 通知 Toast -->
     <div class="toast-container" id="toast-container"></div>
 
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
