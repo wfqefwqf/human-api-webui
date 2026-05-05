@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Human-API 管理后台</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="app">
+        <!-- 顶部导航栏 -->
+        <header class="header">
+            <div class="header-left">
+                <span class="logo">Human-API</span>
+                <span class="subtitle">真人 AI 管理后台</span>
+            </div>
+            <div class="header-right">
+                <div class="stat-badge waiting" id="stat-waiting" title="等待回复">
+                    <span class="stat-dot"></span>
+                    <span class="stat-num" id="pending-count">0</span>
+                    <span class="stat-label">待回复</span>
+                </div>
+                <div class="stat-badge replied" title="已回复">
+                    <span class="stat-num" id="replied-count">0</span>
+                    <span class="stat-label">已回复</span>
+                </div>
+                <div class="stat-badge total" title="总会话">
+                    <span class="stat-num" id="total-count">0</span>
+                    <span class="stat-label">总会话</span>
+                </div>
+                <div class="ws-status" id="ws-status" title="连接状态">
+                    <span class="ws-dot"></span>
+                    <span>连接中</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- 主体区域：左侧会话列表 + 中间聊天 + 右侧设置 -->
+        <main class="main">
+            <!-- 左侧：会话列表 -->
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    <h3>会话列表</h3>
+                    <div class="sidebar-actions">
+                        <button class="btn-icon" id="btn-refresh" title="刷新列表">&#8635;</button>
+                        <select id="filter-status" class="filter-select">
+                            <option value="all">全部</option>
+                            <option value="waiting">等待中</option>
+                            <option value="replied">已回复</option>
+                            <option value="timeout">已超时</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="session-list" id="session-list">
+                    <div class="empty-state">暂无会话，等待外部请求...</div>
+                </div>
+            </aside>
+
+            <!-- 中间：聊天/回复区 -->
+            <section class="chat-panel" id="chat-panel">
+                <div class="chat-empty" id="chat-empty">
+                    <div class="chat-empty-icon">&#128172;</div>
+                    <p>选择左侧会话查看消息</p>
+                    <p class="chat-empty-sub">或等待新的 API 请求进入</p>
+                </div>
+                <div class="chat-active" id="chat-active" style="display:none;">
+                    <div class="chat-header" id="chat-header">
+                        <div class="chat-header-info">
+                            <span class="chat-session-id" id="chat-session-id"></span>
+                            <span class="chat-status" id="chat-status"></span>
+                            <span class="chat-model" id="chat-model"></span>
+                            <span class="chat-time" id="chat-time"></span>
+                        </div>
+                    </div>
+                    <div class="chat-messages" id="chat-messages">
+                        <!-- 消息渲染区域 -->
+                    </div>
+                    <div class="reply-area" id="reply-area">
+                        <div class="reply-input-wrap">
+                            <textarea id="reply-input" placeholder="输入回复内容... Ctrl+Enter 发送" rows="3"></textarea>
+                        </div>
+                        <div class="reply-actions">
+                            <span class="reply-hint" id="reply-hint">回复将以 AI 身份返回给调用方</span>
+                            <button class="btn btn-primary" id="btn-send-reply">发送回复</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 右侧：系统设置 -->
+            <aside class="settings-panel" id="settings-panel">
+                <h3>系统设置</h3>
+                <div class="settings-section">
+                    <label>API 访问密钥</label>
+                    <input type="text" id="setting-api-key" placeholder="留空则不鉴权" autocomplete="off">
+                    <small>外部调用时需携带此密钥（Bearer Token 或 api_key 参数）</small>
+                </div>
+                <div class="settings-section">
+                    <label>回复超时时间（秒）</label>
+                    <input type="number" id="setting-timeout" min="10" max="3600" value="120">
+                    <small>超过此时间未回复，自动返回默认回复</small>
+                </div>
+                <div class="settings-section">
+                    <label>超时默认回复</label>
+                    <textarea id="setting-timeout-reply" rows="2"></textarea>
+                </div>
+                <div class="settings-section">
+                    <button class="btn btn-primary" id="btn-save-config">保存设置</button>
+                </div>
+                <hr>
+                <div class="settings-section">
+                    <label>危险操作</label>
+                    <button class="btn btn-danger" id="btn-clear-all">清空所有会话历史</button>
+                </div>
+                <div class="settings-section">
+                    <div class="info-block">
+                        <p><strong>API 端点</strong></p>
+                        <code id="info-api-url">/v1/chat/completions</code>
+                        <p><strong>兼容端点</strong></p>
+                        <code>/api/chat</code>
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <!-- 通知 Toast -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
