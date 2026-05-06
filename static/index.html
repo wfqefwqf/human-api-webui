@@ -6,11 +6,38 @@
     <title>Human API Console</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" href="https://cdn.jsdelivr.net/npm/mdui@2/mdui.css" as="style">
+    <link rel="preload" href="https://cdn.jsdelivr.net/npm/mdui@2/mdui.global.js" as="script">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mdui@2/mdui.css">
     <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .app-loader {
+            position: fixed; inset: 0; z-index: 9999;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            gap: 20px;
+            background: #f5f5f5;
+            transition: opacity 0.4s;
+        }
+        .app-loader.hide { opacity: 0; pointer-events: none; }
+        .app-loader-spinner {
+            width: 36px; height: 36px;
+            border: 3px solid #e0e0e0;
+            border-top-color: #6750a4;
+            border-radius: 50%;
+            animation: loader-spin 0.8s linear infinite;
+        }
+        @keyframes loader-spin { to { transform: rotate(360deg); } }
+        .app-loader-text { font: 14px/1.4 system-ui, sans-serif; color: #666; }
+    </style>
 </head>
 <body>
+
+<div class="app-loader" id="app-loader">
+    <div class="app-loader-spinner"></div>
+    <div class="app-loader-text">正在加载资源...</div>
+</div>
 
 <mdui-layout full-height>
 
@@ -149,5 +176,20 @@
 <script src="https://cdn.jsdelivr.net/npm/mdui@2/mdui.global.js"></script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script src="/static/js/app.js"></script>
+<script>
+(function() {
+    function hideLoader() {
+        var el = document.getElementById("app-loader");
+        if (!el) return;
+        el.classList.add("hide");
+        setTimeout(function() { el.remove(); }, 500);
+    }
+    if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(hideLoader);
+    } else {
+        window.addEventListener("load", hideLoader);
+    }
+})();
+</script>
 </body>
 </html>
