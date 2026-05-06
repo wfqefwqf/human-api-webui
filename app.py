@@ -1228,7 +1228,7 @@ def start_cleanup_timer():
 
 if __name__ == "__main__":
     host = cfg.get("host", "0.0.0.0")
-    port = cfg.get("port", 5000)
+    port = int(os.environ.get("PORT", cfg.get("port", 5000)))
 
     print("=" * 50)
     print("  Human-API Server")
