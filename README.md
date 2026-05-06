@@ -1,3 +1,14 @@
+---
+title: Human-API WebUI
+emoji: 🤖
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: true
+license: agpl-3.0
+---
+
 # Human-API WebUI
 
 > 把你当做 API — 外部程序调用 Chat 接口，你在 WebUI 管理后台人工回复冒充 AI
