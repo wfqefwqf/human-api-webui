@@ -21,7 +21,9 @@
         replyArea: $("#reply-area"),
         replyHint: $("#reply-hint"),
         btnSendReply: $("#btn-send-reply"),
+        btnAiReply: $("#btn-ai-reply"),
         btnRefresh: $("#btn-refresh"),
+        btnClearAll: $("#btn-clear-all"),
         filterStatus: $("#filter-status"),
         pendingCount: $("#pending-count"),
         repliedCount: $("#replied-count"),
@@ -31,6 +33,16 @@
         settingTimeout: $("#setting-timeout"),
         settingTimeoutReply: $("#setting-timeout-reply"),
         btnSaveConfig: $("#btn-save-config"),
+        settingAiEnabled: $("#setting-ai-enabled"),
+        settingAiAutoHost: $("#setting-ai-auto-host"),
+        settingAiApiUrl: $("#setting-ai-api-url"),
+        settingAiApiKey: $("#setting-ai-api-key"),
+        settingAiModel: $("#setting-ai-model"),
+        settingAiSystemPrompt: $("#setting-ai-system-prompt"),
+        btnSaveAiConfig: $("#btn-save-ai-config"),
+        settingHeartbeatEnabled: $("#setting-heartbeat-enabled"),
+        settingHeartbeatPatterns: $("#setting-heartbeat-patterns"),
+        btnSaveHeartbeatConfig: $("#btn-save-heartbeat-config"),
         btnClearAll: $("#btn-clear-all"),
         toastContainer: $("#toast-container"),
     };
@@ -253,6 +265,7 @@
             dom.replyArea.classList.remove("disabled");
             dom.replyInput.disabled = false;
             dom.btnSendReply.disabled = false;
+            dom.btnAiReply.disabled = false;
             dom.replyInput.placeholder = "输入回复内容... Ctrl+Enter 发送";
             dom.replyHint.textContent = "回复将以 AI 身份返回给调用方";
             dom.replyInput.focus();
@@ -260,6 +273,7 @@
             dom.replyArea.classList.add("disabled");
             dom.replyInput.disabled = true;
             dom.btnSendReply.disabled = true;
+            dom.btnAiReply.disabled = true;
             dom.replyInput.placeholder = "该会话已" + statusLabel(session.status) + "，无法回复";
             dom.replyHint.textContent = "";
         }
@@ -341,6 +355,40 @@
             });
     }
 
+    function sendAiReply() {
+        if (!selectedSessionId) { toast("请先选择一个会话", "error"); return; }
+
+        dom.btnAiReply.disabled = true;
+        dom.btnAiReply.innerHTML = '<span class="ai-loading"></span> AI 思考中...';
+
+        fetch("/api/admin/ai_reply", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: selectedSessionId }),
+        })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    toast("AI 回复已发送", "success");
+                    if (sessions[selectedSessionId]) {
+                        sessions[selectedSessionId].status = "replied";
+                        if (!sessions[selectedSessionId].messages) sessions[selectedSessionId].messages = [];
+                        sessions[selectedSessionId].messages.push({ role: "assistant", content: data.content });
+                        renderChatPanel(selectedSessionId);
+                        renderSessionList();
+                        updateStats();
+                    }
+                } else {
+                    toast(data.error || "AI 回复失败", "error");
+                }
+            })
+            .catch(function (err) { toast("网络错误: " + err.message, "error"); })
+            .finally(function () {
+                dom.btnAiReply.disabled = false;
+                dom.btnAiReply.innerHTML = "&#129302; AI 回复";
+            });
+    }
+
     function updateStats() {
         var all = Object.values(sessions);
         var total = all.length;
@@ -359,6 +407,14 @@
         if (cfg.api_key && cfg.api_key !== "***") dom.settingApiKey.value = cfg.api_key;
         if (cfg.timeout) dom.settingTimeout.value = cfg.timeout;
         if (cfg.timeout_reply) dom.settingTimeoutReply.value = cfg.timeout_reply;
+        if (cfg.ai_enabled !== undefined) dom.settingAiEnabled.checked = !!cfg.ai_enabled;
+        if (cfg.ai_auto_host !== undefined) dom.settingAiAutoHost.checked = !!cfg.ai_auto_host;
+        if (cfg.ai_api_url && cfg.ai_api_url !== "***") dom.settingAiApiUrl.value = cfg.ai_api_url;
+        if (cfg.ai_api_key && cfg.ai_api_key !== "***") dom.settingAiApiKey.value = cfg.ai_api_key;
+        if (cfg.ai_model) dom.settingAiModel.value = cfg.ai_model;
+        if (cfg.ai_system_prompt) dom.settingAiSystemPrompt.value = cfg.ai_system_prompt;
+        if (cfg.heartbeat_enabled !== undefined) dom.settingHeartbeatEnabled.checked = !!cfg.heartbeat_enabled;
+        if (cfg.heartbeat_patterns && Array.isArray(cfg.heartbeat_patterns)) dom.settingHeartbeatPatterns.value = cfg.heartbeat_patterns.join(", ");
     }
 
     function loadConfig() {
@@ -393,6 +449,54 @@
             .catch(function (err) { toast("网络错误: " + err.message, "error"); });
     }
 
+    function saveAiConfig() {
+        var updates = {};
+        updates.ai_enabled = dom.settingAiEnabled.checked;
+        updates.ai_auto_host = dom.settingAiAutoHost.checked;
+        var aiApiUrl = dom.settingAiApiUrl.value.trim();
+        var aiApiKey = dom.settingAiApiKey.value.trim();
+        var aiModel = dom.settingAiModel.value.trim();
+        var aiSystemPrompt = dom.settingAiSystemPrompt.value.trim();
+
+        if (aiApiUrl) updates.ai_api_url = aiApiUrl;
+        if (aiApiKey) updates.ai_api_key = aiApiKey;
+        if (aiModel) updates.ai_model = aiModel;
+        if (aiSystemPrompt) updates.ai_system_prompt = aiSystemPrompt;
+
+        fetch("/api/admin/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(updates),
+        })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.success) toast("AI 设置已保存", "success");
+                else toast(data.error || "保存失败", "error");
+            })
+            .catch(function (err) { toast("网络错误: " + err.message, "error"); });
+    }
+
+    function saveHeartbeatConfig() {
+        var updates = {};
+        updates.heartbeat_enabled = dom.settingHeartbeatEnabled.checked;
+        var patterns = dom.settingHeartbeatPatterns.value.trim();
+        if (patterns) {
+            updates.heartbeat_patterns = patterns.split(",").map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 0; });
+        }
+
+        fetch("/api/admin/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(updates),
+        })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.success) toast("心跳设置已保存", "success");
+                else toast(data.error || "保存失败", "error");
+            })
+            .catch(function (err) { toast("网络错误: " + err.message, "error"); });
+    }
+
     function clearAllSessions() {
         if (!confirm("确定要清空所有会话历史吗？此操作不可撤销。")) return;
 
@@ -415,6 +519,7 @@
 
     function bindEvents() {
         dom.btnSendReply.addEventListener("click", sendReply);
+        dom.btnAiReply.addEventListener("click", sendAiReply);
 
         dom.replyInput.addEventListener("keydown", function (e) {
             if (e.ctrlKey && e.key === "Enter") {
@@ -434,6 +539,8 @@
         });
 
         dom.btnSaveConfig.addEventListener("click", saveConfig);
+        dom.btnSaveAiConfig.addEventListener("click", saveAiConfig);
+        dom.btnSaveHeartbeatConfig.addEventListener("click", saveHeartbeatConfig);
         dom.btnClearAll.addEventListener("click", clearAllSessions);
     }
 

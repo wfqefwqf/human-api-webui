@@ -26,6 +26,18 @@ DEFAULT_CONFIG = {
     "port": 5000,              # 监听端口
     "max_sessions": 500,       # 最大会话数量
     "max_history_per_session": 200,  # 每个会话最大历史消息数
+
+    # AI 自动回复配置
+    "ai_enabled": False,           # 是否启用 AI 自动回复
+    "ai_api_url": "",              # OpenAI 兼容 API 地址，如 https://api.openai.com/v1/chat/completions
+    "ai_api_key": "",              # AI API 密钥
+    "ai_model": "",                # AI 模型名称，如 gpt-4o
+    "ai_system_prompt": "你是一个有帮助的AI助手。",  # AI 系统提示词
+    "ai_auto_host": False,         # 是否启用 AI 自动托管（新会话自动调用 AI 回复）
+
+    # 心跳自动回复配置
+    "heartbeat_enabled": True,     # 是否启用心跳自动回复
+    "heartbeat_patterns": ["hi", "hello", "hey", "ping", "test", "你好", "在吗"],  # 心跳关键词列表
 }
 
 # 线程锁，保证配置读写安全

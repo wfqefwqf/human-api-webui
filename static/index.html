@@ -39,6 +39,7 @@
                 <div class="sidebar-header">
                     <h3>会话</h3>
                     <div class="sidebar-actions">
+                        <button class="btn-icon btn-icon-danger" id="btn-clear-all" title="清空所有会话">&#128465;</button>
                         <button class="btn-icon" id="btn-refresh" title="刷新列表">&#8635;</button>
                         <select id="filter-status" class="filter-select">
                             <option value="all">全部</option>
@@ -77,6 +78,7 @@
                             <textarea id="reply-input" placeholder="输入回复内容... Ctrl+Enter 发送" rows="3"></textarea>
                         </div>
                         <div class="reply-actions">
+                            <button class="btn btn-ai" id="btn-ai-reply" title="调用 AI API 自动回复">&#129302; AI 回复</button>
                             <span class="reply-hint" id="reply-hint">回复将以 AI 身份返回给调用方</span>
                             <button class="btn btn-primary" id="btn-send-reply">发送</button>
                         </div>
@@ -102,6 +104,65 @@
                 </div>
                 <div class="settings-section">
                     <button class="btn btn-primary" id="btn-save-config">保存设置</button>
+                </div>
+                <hr>
+                <div class="settings-section">
+                    <label>&#129302; AI 自动回复</label>
+                    <div class="toggle-row">
+                        <span class="toggle-label">启用 AI 自动回复</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="setting-ai-enabled">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="toggle-row" style="margin-top:8px">
+                        <span class="toggle-label">AI 自动托管</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="setting-ai-auto-host">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <small>自动托管：新消息自动调用 AI 回复，无需人工干预</small>
+                </div>
+                <div class="settings-section">
+                    <label>AI API 地址</label>
+                    <input type="text" id="setting-ai-api-url" placeholder="https://api.openai.com/v1/chat/completions" autocomplete="off">
+                    <small>OpenAI 兼容格式的 API 端点</small>
+                </div>
+                <div class="settings-section">
+                    <label>AI API 密钥</label>
+                    <input type="password" id="setting-ai-api-key" placeholder="sk-..." autocomplete="off">
+                </div>
+                <div class="settings-section">
+                    <label>AI 模型名称</label>
+                    <input type="text" id="setting-ai-model" placeholder="gpt-4o" autocomplete="off">
+                </div>
+                <div class="settings-section">
+                    <label>AI 系统提示词</label>
+                    <textarea id="setting-ai-system-prompt" rows="2" placeholder="你是一个有帮助的AI助手。"></textarea>
+                </div>
+                <div class="settings-section">
+                    <button class="btn btn-primary" id="btn-save-ai-config">保存 AI 设置</button>
+                </div>
+                <hr>
+                <div class="settings-section">
+                    <label>&#128147; 心跳自动回复</label>
+                    <div class="toggle-row">
+                        <span class="toggle-label">启用心跳自动回复</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="setting-heartbeat-enabled">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <small>匹配关键词的请求将自动原样回复，不进入会话列表</small>
+                </div>
+                <div class="settings-section">
+                    <label>心跳关键词</label>
+                    <input type="text" id="setting-heartbeat-patterns" placeholder="hi, hello, ping, test" autocomplete="off">
+                    <small>用英文逗号分隔，匹配后自动原样回复</small>
+                </div>
+                <div class="settings-section">
+                    <button class="btn btn-primary" id="btn-save-heartbeat-config">保存心跳设置</button>
                 </div>
                 <hr>
                 <div class="settings-section">

@@ -22,6 +22,7 @@ from threading import Lock
 
 from flask import Flask, request, jsonify, Response, send_from_directory
 from flask_socketio import SocketIO, emit
+import requests as http_requests
 
 import config as cfg
 
@@ -102,6 +103,26 @@ def now_iso():
     return datetime.now().isoformat(timespec="seconds")
 
 
+def cleanup_expired_sessions(max_age_hours=24):
+    """清理超过指定时间的已结束会话（replied/timeout）"""
+    now = datetime.now()
+    to_remove = []
+    with sessions_lock:
+        for sid, s in sessions.items():
+            if s["status"] in ("replied", "timeout"):
+                try:
+                    updated = datetime.fromisoformat(s.get("updated_at", s.get("created_at", "")))
+                    if (now - updated).total_seconds() > max_age_hours * 3600:
+                        to_remove.append(sid)
+                except (ValueError, TypeError):
+                    pass
+        for sid in to_remove:
+            del sessions[sid]
+            remove_from_pending(sid)
+    if to_remove:
+        logger.info(f"[清理] 已清理 {len(to_remove)} 个过期会话")
+
+
 def build_openai_response(session_id, model, content, stream=False):
     """构建 OpenAI 格式的响应数据"""
     if stream:
@@ -141,6 +162,97 @@ def serialize_session(session):
         "updated_at": session["updated_at"],
         "message_count": len(session["messages"]),
     }
+
+
+def call_ai_api(messages, model_override=None):
+    """
+    调用 OpenAI 兼容 API 获取 AI 回复。
+
+    Args:
+        messages: OpenAI 格式的消息列表
+        model_override: 可选，覆盖配置中的模型名称
+
+    Returns:
+        (success: bool, content: str) 元组
+    """
+    api_url = cfg.get("ai_api_url", "")
+    api_key = cfg.get("ai_api_key", "")
+    ai_model = model_override or cfg.get("ai_model", "")
+    system_prompt = cfg.get("ai_system_prompt", "")
+
+    if not api_url:
+        return False, "未配置 AI API 地址"
+
+    req_messages = []
+    if system_prompt:
+        req_messages.append({"role": "system", "content": system_prompt})
+    req_messages.extend(messages)
+
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    payload = {
+        "model": ai_model,
+        "messages": req_messages,
+        "stream": False,
+    }
+
+    try:
+        resp = http_requests.post(api_url, headers=headers, json=payload, timeout=120)
+        resp.raise_for_status()
+        data = resp.json()
+
+        choices = data.get("choices", [])
+        if choices and choices[0].get("message"):
+            content = choices[0]["message"].get("content", "")
+            if content:
+                return True, content
+
+        return False, "AI 返回内容为空"
+    except http_requests.exceptions.Timeout:
+        return False, "AI API 请求超时"
+    except http_requests.exceptions.ConnectionError:
+        return False, "无法连接 AI API 服务"
+    except Exception as e:
+        return False, f"AI API 调用失败: {str(e)}"
+
+
+def _auto_host_thread(session_id):
+    """后台线程：自动调用 AI API 回复指定会话"""
+    import threading
+
+    def _do_auto_host():
+        with sessions_lock:
+            session = sessions.get(session_id)
+            if not session or session["status"] != "waiting":
+                return
+            messages_copy = list(session["messages"])
+
+        logger.info(f"[AI自动托管] 会话 {session_id} | 正在调用 AI API...")
+
+        success, ai_content = call_ai_api(messages_copy)
+
+        if not success:
+            logger.error(f"[AI自动托管失败] 会话 {session_id} | {ai_content}")
+            return
+
+        with sessions_lock:
+            session = sessions.get(session_id)
+            if not session or session["status"] != "waiting":
+                return
+            session["reply_content"] = ai_content
+            session["status"] = "replied"
+            session["messages"].append({"role": "assistant", "content": ai_content})
+            session["updated_at"] = now_iso()
+            session["request_event"].set()
+
+        remove_from_pending(session_id)
+        logger.info(f"[AI自动托管成功] 会话 {session_id} | 回复: {ai_content[:80]}...")
+        socketio.emit("session_updated", serialize_session(sessions.get(session_id)))
+
+    t = threading.Thread(target=_do_auto_host, daemon=True)
+    t.start()
 
 
 # ==================== 鉴权中间层 ====================
@@ -215,31 +327,61 @@ def chat_completions():
             user_query = msg.get("content", "")
             break
 
-    # 创建会话
-    session_id = generate_session_id()
-    event = __import__("threading").Event()
+    # 心跳自动回复：匹配关键词则直接返回，不创建会话
+    if cfg.get("heartbeat_enabled", True):
+        patterns = cfg.get("heartbeat_patterns", [])
+        if user_query.strip().lower() in [p.lower() for p in patterns]:
+            logger.info(f"[心跳] 自动回复: {user_query}")
+            heartbeat_reply = user_query.strip()
+            if stream:
+                def generate_heartbeat():
+                    yield f"data: {json.dumps(build_openai_response('heartbeat', model, heartbeat_reply, stream=True))}\n\n"
+                    end_chunk = {"id": "chatcmpl-heartbeat", "object": "chat.completion.chunk", "created": int(time.time()), "model": model, "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+                    yield f"data: {json.dumps(end_chunk)}\n\n"
+                    yield "data: [DONE]\n\n"
+                return Response(generate_heartbeat(), mimetype="text/event-stream")
+            return jsonify(build_openai_response("heartbeat", model, heartbeat_reply))
 
+    # 去重：如果已有相同模型+相同提问的等待中会话，直接复用
     with sessions_lock:
-        sessions[session_id] = {
-            "id": session_id,
-            "model": model,
-            "messages": list(messages),
-            "status": "waiting",
-            "pending_message": messages[-1] if messages else {},
-            "created_at": now_iso(),
-            "updated_at": now_iso(),
-            "request_event": event,
-            "reply_content": None,
-        }
+        for sid, s in sessions.items():
+            if s["status"] == "waiting" and s["model"] == model:
+                existing_query = ""
+                for msg in reversed(s.get("messages", [])):
+                    if isinstance(msg, dict) and msg.get("role") == "user":
+                        existing_query = msg.get("content", "")
+                        break
+                if existing_query == user_query:
+                    logger.info(f"[去重] 复用会话 {sid} | 模型: {model} | 提问: {user_query[:80]}")
+                    event = s["request_event"]
+                    session_id = sid
+                    break
+        else:
+            session_id = generate_session_id()
+            event = __import__("threading").Event()
 
-    add_to_pending(session_id)
-    logger.info(f"[新请求] 会话 {session_id} | 模型: {model} | 提问: {user_query[:80]}...")
+            sessions[session_id] = {
+                "id": session_id,
+                "model": model,
+                "messages": list(messages),
+                "status": "waiting",
+                "pending_message": messages[-1] if messages else {},
+                "created_at": now_iso(),
+                "updated_at": now_iso(),
+                "request_event": event,
+                "reply_content": None,
+            }
 
-    # WebSocket 通知前端有新消息
-    socketio.emit("new_request", {
-        "session": serialize_session(sessions[session_id]),
-        "query_preview": user_query[:200],
-    })
+            add_to_pending(session_id)
+            logger.info(f"[新请求] 会话 {session_id} | 模型: {model} | 提问: {user_query[:80]}...")
+
+            socketio.emit("new_request", {
+                "session": serialize_session(sessions[session_id]),
+                "query_preview": user_query[:200],
+            })
+
+            if cfg.get("ai_auto_host", False):
+                _auto_host_thread(session_id)
 
     # 等待人工回复或超时
     timeout = cfg.get("timeout", 120)
@@ -248,7 +390,17 @@ def chat_completions():
     with sessions_lock:
         session = sessions.get(session_id)
         if not session:
-            return jsonify({"error": {"message": "会话异常", "type": "server_error"}}), 500
+            answer = cfg.get("timeout_reply", "抱歉，当前人工客服繁忙，请稍后再试。")
+            remove_from_pending(session_id)
+            logger.warning(f"[会话丢失] 会话 {session_id} 已被清理，返回超时回复")
+            if stream:
+                def generate_fallback():
+                    yield f"data: {json.dumps(build_openai_response(session_id, model, answer, stream=True))}\n\n"
+                    end_chunk = {"id": f"chatcmpl-{session_id}", "object": "chat.completion.chunk", "created": int(time.time()), "model": model, "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+                    yield f"data: {json.dumps(end_chunk)}\n\n"
+                    yield "data: [DONE]\n\n"
+                return Response(generate_fallback(), mimetype="text/event-stream")
+            return jsonify(build_openai_response(session_id, model, answer))
 
         if replied and session["reply_content"]:
             answer = session["reply_content"]
@@ -889,6 +1041,58 @@ def admin_reply():
     return jsonify({"success": True, "session_id": session_id})
 
 
+@app.route("/api/admin/ai_reply", methods=["POST"])
+def admin_ai_reply():
+    """
+    管理员通过 WebUI 触发 AI 自动回复。
+    请求体：{"session_id": "xxx"}
+    """
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"error": "请求体为空"}), 400
+    except Exception:
+        return jsonify({"error": "无效的 JSON 格式"}), 400
+
+    session_id = data.get("session_id", "")
+    if not session_id:
+        return jsonify({"error": "session_id 不能为空"}), 400
+
+    with sessions_lock:
+        session = sessions.get(session_id)
+        if not session:
+            return jsonify({"error": "会话不存在"}), 404
+        if session["status"] != "waiting":
+            return jsonify({"error": f"该会话状态为 {session['status']}，无法回复"}), 400
+        messages_copy = list(session["messages"])
+
+    logger.info(f"[AI回复] 会话 {session_id} | 正在调用 AI API...")
+
+    success, ai_content = call_ai_api(messages_copy)
+
+    if not success:
+        logger.error(f"[AI回复失败] 会话 {session_id} | {ai_content}")
+        return jsonify({"error": ai_content}), 500
+
+    with sessions_lock:
+        session = sessions.get(session_id)
+        if not session or session["status"] != "waiting":
+            return jsonify({"error": "会话状态已变更"}), 400
+
+        session["reply_content"] = ai_content
+        session["status"] = "replied"
+        session["messages"].append({"role": "assistant", "content": ai_content})
+        session["updated_at"] = now_iso()
+        session["request_event"].set()
+
+    remove_from_pending(session_id)
+    logger.info(f"[AI回复成功] 会话 {session_id} | 回复: {ai_content[:80]}...")
+
+    socketio.emit("session_updated", serialize_session(session))
+
+    return jsonify({"success": True, "session_id": session_id, "content": ai_content})
+
+
 @app.route("/api/admin/stats", methods=["GET"])
 def admin_stats():
     """获取统计数据"""
@@ -912,6 +1116,8 @@ def admin_get_config():
     all_cfg = cfg.get_all()
     if all_cfg.get("api_key"):
         all_cfg["api_key"] = "***"
+    if all_cfg.get("ai_api_key"):
+        all_cfg["ai_api_key"] = "***"
     return jsonify(all_cfg)
 
 
@@ -925,7 +1131,9 @@ def admin_update_config():
     except Exception:
         return jsonify({"error": "无效的 JSON 格式"}), 400
 
-    allowed_keys = {"api_key", "timeout", "timeout_reply", "host", "port"}
+    allowed_keys = {"api_key", "timeout", "timeout_reply", "host", "port",
+                    "ai_enabled", "ai_api_url", "ai_api_key", "ai_model", "ai_system_prompt", "ai_auto_host",
+                    "heartbeat_enabled", "heartbeat_patterns"}
     updates = {k: v for k, v in data.items() if k in allowed_keys and v is not None}
 
     if "timeout" in updates:
@@ -951,6 +1159,11 @@ def admin_update_config():
 def admin_clear_sessions():
     """清空所有会话历史"""
     with sessions_lock:
+        for sid, s in sessions.items():
+            if s["status"] == "waiting" and s.get("request_event"):
+                s["reply_content"] = cfg.get("timeout_reply", "抱歉，当前人工客服繁忙，请稍后再试。")
+                s["status"] = "timeout"
+                s["request_event"].set()
         sessions.clear()
     with pending_lock:
         pending_queue.clear()
@@ -963,6 +1176,7 @@ def admin_clear_sessions():
 def handle_connect():
     """客户端连接时发送当前状态"""
     logger.info(f"[WS] 客户端连接: {request.sid}")
+    cleanup_expired_sessions()
     with sessions_lock:
         all_sessions = [serialize_session(s) for s in sessions.values()]
     emit("init_data", {
@@ -998,6 +1212,20 @@ def handle_request_messages(data):
 
 
 # ==================== 入口 ====================
+def start_cleanup_timer():
+    """启动定时清理过期会话的后台线程"""
+    import threading
+
+    def _cleanup_loop():
+        while True:
+            time.sleep(600)
+            cleanup_expired_sessions()
+
+    t = threading.Thread(target=_cleanup_loop, daemon=True)
+    t.start()
+    logger.info("[后台] 会话清理线程已启动（每10分钟清理一次）")
+
+
 if __name__ == "__main__":
     host = cfg.get("host", "0.0.0.0")
     port = cfg.get("port", 5000)
@@ -1013,4 +1241,5 @@ if __name__ == "__main__":
     print(f"  接口鉴权:       {'已启用' if api_key else '未启用（任何人可调用）'}")
     print("=" * 50)
 
+    start_cleanup_timer()
     socketio.run(app, host=host, port=port, debug=False, allow_unsafe_werkzeug=True)
