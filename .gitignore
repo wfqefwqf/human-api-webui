@@ -3,3 +3,4 @@ __pycache__/
 data/config.json
 logs/*.log
 .env
+dist/
