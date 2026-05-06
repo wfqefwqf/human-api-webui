@@ -24,11 +24,10 @@
         btnAiReply: $("#btn-ai-reply"),
         btnRefresh: $("#btn-refresh"),
         btnClearAll: $("#btn-clear-all"),
-        filterStatus: $("#filter-status"),
-        pendingCount: $("#pending-count"),
-        repliedCount: $("#replied-count"),
-        totalCount: $("#total-count"),
-        wsStatus: $("#ws-status"),
+        btnClearSidebar: $("#btn-clear-sidebar"),
+        filterGroup: $("#filter-group"),
+        sidebarStats: $("#sidebar-stats"),
+        wsDot: $("#ws-dot"),
         settingApiKey: $("#setting-api-key"),
         settingTimeout: $("#setting-timeout"),
         settingTimeoutReply: $("#setting-timeout-reply"),
@@ -43,22 +42,14 @@
         settingHeartbeatEnabled: $("#setting-heartbeat-enabled"),
         settingHeartbeatPatterns: $("#setting-heartbeat-patterns"),
         btnSaveHeartbeatConfig: $("#btn-save-heartbeat-config"),
-        btnClearAll: $("#btn-clear-all"),
-        toastContainer: $("#toast-container"),
     };
 
     function toast(msg, type) {
-        if (type === undefined) type = "info";
-        var el = document.createElement("div");
-        el.className = "toast " + type;
-        el.textContent = msg;
-        dom.toastContainer.appendChild(el);
-        setTimeout(function () {
-            el.style.opacity = "0";
-            el.style.transform = "translateX(30px)";
-            el.style.transition = "all 0.3s ease";
-            setTimeout(function () { el.remove(); }, 300);
-        }, 3000);
+        mdui.snackbar({
+            message: msg,
+            closeable: true,
+            autoCloseDelay: 4000,
+        });
     }
 
     function formatTime(isoStr) {
@@ -91,6 +82,11 @@
         return map[status] || status;
     }
 
+    function statusIcon(status) {
+        var map = { waiting: "hourglass_top--outlined", replied: "check_circle--outlined", timeout: "error--outlined" };
+        return map[status] || "info--outlined";
+    }
+
     function initSocket() {
         socket = io({
             transports: ["websocket", "polling"],
@@ -99,13 +95,13 @@
         });
 
         socket.on("connect", function () {
-            dom.wsStatus.className = "ws-status connected";
-            dom.wsStatus.innerHTML = '<span class="ws-dot"></span><span>已连接</span>';
+            dom.wsDot.className = "ws-dot connected";
+            dom.wsDot.title = "已连接";
         });
 
         socket.on("disconnect", function () {
-            dom.wsStatus.className = "ws-status";
-            dom.wsStatus.innerHTML = '<span class="ws-dot"></span><span>已断开</span>';
+            dom.wsDot.className = "ws-dot disconnected";
+            dom.wsDot.title = "已断开";
         });
 
         socket.on("init_data", function (data) {
@@ -122,7 +118,7 @@
             sessions[s.id] = s;
             renderSessionList();
             updateStats();
-            toast("新消息: " + (data.query_preview || "").substring(0, 40) + "...", "warning");
+            toast("新消息: " + (data.query_preview || "").substring(0, 40) + "...");
             playBeep();
         });
 
@@ -188,30 +184,28 @@
         }
 
         if (list.length === 0) {
-            dom.sessionList.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128172;</div>暂无会话，等待外部请求...</div>';
+            dom.sessionList.innerHTML = '<div class="empty-state"><mdui-icon name="chat--outlined" style="font-size:48px;opacity:0.3;"></mdui-icon><div>暂无会话，等待外部请求...</div></div>';
             return;
         }
 
-        var html = "";
+        var html = '<mdui-list>';
         list.forEach(function (s) {
-            var activeClass = s.id === selectedSessionId ? " active" : "";
+            var activeAttr = s.id === selectedSessionId ? ' active' : '';
             var preview = getSessionPreview(s);
-            var avatar = s.status === "waiting" ? "&#128100;" : "&#129302;";
-            html += '<div class="session-item' + activeClass + '" data-id="' + s.id + '">' +
-                '<div class="session-item-header">' +
-                '<span class="session-id">' + avatar + " " + escapeHtml(s.id.substring(0, 12)) + '</span>' +
-                '<span class="session-status ' + s.status + '">' + statusLabel(s.status) + '</span>' +
-                '</div>' +
-                '<div class="session-preview">' + escapeHtml(preview) + '</div>' +
-                '<div class="session-meta">' +
-                '<span>' + escapeHtml(s.model || "") + '</span>' +
-                '<span>' + formatTime(s.created_at) + '</span>' +
-                '</div>' +
-                '</div>';
+            var avatar = s.status === "waiting" ? "person--outlined" : "smart_toy--outlined";
+            html += '<mdui-list-item' + activeAttr + ' rounded icon="' + avatar + '" data-id="' + s.id + '">' +
+                escapeHtml(s.id.substring(0, 12)) +
+                '<span slot="description">' + escapeHtml(preview) + '</span>' +
+                '<span slot="end-icon" class="session-end">' +
+                '<span class="session-time">' + formatTime(s.created_at) + '</span>' +
+                '<mdui-icon name="' + statusIcon(s.status) + '"></mdui-icon>' +
+                '</span>' +
+                '</mdui-list-item>';
         });
+        html += '</mdui-list>';
         dom.sessionList.innerHTML = html;
 
-        dom.sessionList.querySelectorAll(".session-item").forEach(function (el) {
+        dom.sessionList.querySelectorAll("mdui-list-item").forEach(function (el) {
             el.addEventListener("click", function () {
                 selectSession(el.getAttribute("data-id"));
             });
@@ -251,7 +245,7 @@
 
         dom.chatSessionId.textContent = session.id;
         dom.chatStatus.textContent = statusLabel(session.status);
-        dom.chatStatus.className = "chat-status " + session.status;
+        dom.chatStatus.setAttribute("icon", statusIcon(session.status));
         dom.chatModel.textContent = session.model || "";
         dom.chatTime.textContent = formatDateTime(session.created_at);
 
@@ -263,18 +257,17 @@
 
         if (session.status === "waiting") {
             dom.replyArea.classList.remove("disabled");
-            dom.replyInput.disabled = false;
-            dom.btnSendReply.disabled = false;
-            dom.btnAiReply.disabled = false;
-            dom.replyInput.placeholder = "输入回复内容... Ctrl+Enter 发送";
+            dom.replyInput.removeAttribute("disabled");
+            dom.btnSendReply.removeAttribute("disabled");
+            dom.btnAiReply.removeAttribute("disabled");
+            dom.replyInput.setAttribute("placeholder", "Ctrl+Enter 发送");
             dom.replyHint.textContent = "回复将以 AI 身份返回给调用方";
-            dom.replyInput.focus();
         } else {
             dom.replyArea.classList.add("disabled");
-            dom.replyInput.disabled = true;
-            dom.btnSendReply.disabled = true;
-            dom.btnAiReply.disabled = true;
-            dom.replyInput.placeholder = "该会话已" + statusLabel(session.status) + "，无法回复";
+            dom.replyInput.setAttribute("disabled", "");
+            dom.btnSendReply.setAttribute("disabled", "");
+            dom.btnAiReply.setAttribute("disabled", "");
+            dom.replyInput.setAttribute("placeholder", "该会话已" + statusLabel(session.status));
             dom.replyHint.textContent = "";
         }
 
@@ -294,19 +287,21 @@
             var delay = Math.min(idx * 0.05, 0.3);
 
             if (role === "system") {
-                html += '<div class="message system" style="animation-delay:' + delay + 's">[系统] ' + escapeHtml(content) + '</div>';
+                html += '<div class="message-bubble system" style="animation-delay:' + delay + 's">' +
+                    '<mdui-chip icon="info--outlined">' + escapeHtml(content) + '</mdui-chip>' +
+                    '</div>';
             } else if (role === "user") {
                 html += '<div class="message-row user" style="animation: msg-in 0.3s cubic-bezier(0.34,1.56,0.64,1) ' + delay + 's both">' +
-                    '<div class="message-avatar">&#128100;</div>' +
-                    '<div class="message user">' +
+                    '<div class="message-avatar"><mdui-icon name="person--outlined"></mdui-icon></div>' +
+                    '<div class="message-bubble user">' +
                     '<div class="message-label">用户</div>' +
                     escapeHtml(content) +
                     '</div>' +
                     '</div>';
             } else if (role === "assistant") {
                 html += '<div class="message-row assistant" style="animation: msg-in 0.3s cubic-bezier(0.34,1.56,0.64,1) ' + delay + 's both">' +
-                    '<div class="message-avatar">&#129302;</div>' +
-                    '<div class="message assistant">' +
+                    '<div class="message-avatar"><mdui-icon name="smart_toy--outlined"></mdui-icon></div>' +
+                    '<div class="message-bubble assistant">' +
                     '<div class="message-label">AI（你）</div>' +
                     escapeHtml(content) +
                     '</div>' +
@@ -319,17 +314,17 @@
     }
 
     function sendReply() {
-        var content = dom.replyInput.value.trim();
-        if (!content) { toast("回复内容不能为空", "error"); return; }
+        var content = dom.replyInput.value;
+        if (!content || !content.trim()) { toast("回复内容不能为空", "error"); return; }
         if (!selectedSessionId) { toast("请先选择一个会话", "error"); return; }
 
-        dom.btnSendReply.disabled = true;
-        dom.btnSendReply.textContent = "发送中...";
+        dom.btnSendReply.setAttribute("loading", "");
+        dom.btnSendReply.setAttribute("disabled", "");
 
         fetch("/api/admin/reply", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ session_id: selectedSessionId, content: content }),
+            body: JSON.stringify({ session_id: selectedSessionId, content: content.trim() }),
         })
             .then(function (res) { return res.json(); })
             .then(function (data) {
@@ -339,7 +334,7 @@
                     if (sessions[selectedSessionId]) {
                         sessions[selectedSessionId].status = "replied";
                         if (!sessions[selectedSessionId].messages) sessions[selectedSessionId].messages = [];
-                        sessions[selectedSessionId].messages.push({ role: "assistant", content: content });
+                        sessions[selectedSessionId].messages.push({ role: "assistant", content: content.trim() });
                         renderChatPanel(selectedSessionId);
                         renderSessionList();
                         updateStats();
@@ -350,16 +345,16 @@
             })
             .catch(function (err) { toast("网络错误: " + err.message, "error"); })
             .finally(function () {
-                dom.btnSendReply.disabled = false;
-                dom.btnSendReply.textContent = "发送";
+                dom.btnSendReply.removeAttribute("loading");
+                dom.btnSendReply.removeAttribute("disabled");
             });
     }
 
     function sendAiReply() {
         if (!selectedSessionId) { toast("请先选择一个会话", "error"); return; }
 
-        dom.btnAiReply.disabled = true;
-        dom.btnAiReply.innerHTML = '<span class="ai-loading"></span> AI 思考中...';
+        dom.btnAiReply.setAttribute("loading", "");
+        dom.btnAiReply.setAttribute("disabled", "");
 
         fetch("/api/admin/ai_reply", {
             method: "POST",
@@ -384,8 +379,8 @@
             })
             .catch(function (err) { toast("网络错误: " + err.message, "error"); })
             .finally(function () {
-                dom.btnAiReply.disabled = false;
-                dom.btnAiReply.innerHTML = "&#129302; AI 回复";
+                dom.btnAiReply.removeAttribute("loading");
+                dom.btnAiReply.removeAttribute("disabled");
             });
     }
 
@@ -393,14 +388,12 @@
         var all = Object.values(sessions);
         var total = all.length;
         var waiting = 0;
-        var replied = 0;
         all.forEach(function (s) {
             if (s.status === "waiting") waiting++;
-            else if (s.status === "replied") replied++;
         });
-        dom.pendingCount.textContent = waiting;
-        dom.repliedCount.textContent = replied;
-        dom.totalCount.textContent = total;
+        if (dom.sidebarStats) {
+            dom.sidebarStats.textContent = waiting + " 等待 / " + total + " 总计";
+        }
     }
 
     function applyConfig(cfg) {
@@ -426,9 +419,9 @@
 
     function saveConfig() {
         var updates = {};
-        var apiKey = dom.settingApiKey.value.trim();
+        var apiKey = dom.settingApiKey.value;
         var timeout = parseInt(dom.settingTimeout.value, 10);
-        var timeoutReply = dom.settingTimeoutReply.value.trim();
+        var timeoutReply = dom.settingTimeoutReply.value;
 
         if (apiKey) updates.api_key = apiKey;
         if (!isNaN(timeout) && timeout >= 10) updates.timeout = timeout;
@@ -453,10 +446,10 @@
         var updates = {};
         updates.ai_enabled = dom.settingAiEnabled.checked;
         updates.ai_auto_host = dom.settingAiAutoHost.checked;
-        var aiApiUrl = dom.settingAiApiUrl.value.trim();
-        var aiApiKey = dom.settingAiApiKey.value.trim();
-        var aiModel = dom.settingAiModel.value.trim();
-        var aiSystemPrompt = dom.settingAiSystemPrompt.value.trim();
+        var aiApiUrl = dom.settingAiApiUrl.value;
+        var aiApiKey = dom.settingAiApiKey.value;
+        var aiModel = dom.settingAiModel.value;
+        var aiSystemPrompt = dom.settingAiSystemPrompt.value;
 
         if (aiApiUrl) updates.ai_api_url = aiApiUrl;
         if (aiApiKey) updates.ai_api_key = aiApiKey;
@@ -479,7 +472,7 @@
     function saveHeartbeatConfig() {
         var updates = {};
         updates.heartbeat_enabled = dom.settingHeartbeatEnabled.checked;
-        var patterns = dom.settingHeartbeatPatterns.value.trim();
+        var patterns = dom.settingHeartbeatPatterns.value;
         if (patterns) {
             updates.heartbeat_patterns = patterns.split(",").map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 0; });
         }
@@ -527,21 +520,35 @@
                 sendReply();
             }
         });
+        if (dom.replyInput.shadowRoot) {
+            var innerInput = dom.replyInput.shadowRoot.querySelector("textarea") || dom.replyInput.shadowRoot.querySelector("input");
+            if (innerInput) {
+                innerInput.addEventListener("keydown", function (e) {
+                    if (e.ctrlKey && e.key === "Enter") {
+                        e.preventDefault();
+                        sendReply();
+                    }
+                });
+            }
+        }
 
         dom.btnRefresh.addEventListener("click", function () {
             socket.emit("request_sessions");
-            toast("已刷新", "info");
+            toast("已刷新");
         });
 
-        dom.filterStatus.addEventListener("change", function () {
-            filterStatus = this.value;
-            renderSessionList();
-        });
+        if (dom.filterGroup) {
+            dom.filterGroup.addEventListener("change", function () {
+                filterStatus = this.value;
+                renderSessionList();
+            });
+        }
 
         dom.btnSaveConfig.addEventListener("click", saveConfig);
         dom.btnSaveAiConfig.addEventListener("click", saveAiConfig);
         dom.btnSaveHeartbeatConfig.addEventListener("click", saveHeartbeatConfig);
         dom.btnClearAll.addEventListener("click", clearAllSessions);
+        if (dom.btnClearSidebar) dom.btnClearSidebar.addEventListener("click", clearAllSessions);
     }
 
     function init() {

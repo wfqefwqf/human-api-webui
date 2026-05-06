@@ -20,7 +20,7 @@ license: agpl-3.0
 ## 功能特性
 
 - **OpenAI 兼容接口** — `/v1/chat/completions`，支持流式/非流式响应
-- **WebUI 管理后台** — Claude 风格暖色 UI，QQ 风格气泡对话
+- **MDUI 2 管理后台** — 基于 Material Design 3 的现代化 UI，CDN 引入无需构建
 - **WebSocket 实时推送** — 新消息即时通知，无需刷新页面
 - **会话管理** — 自动分配会话 ID，保存完整聊天上下文
 - **会话去重** — 相同模型相同提问自动复用已有会话
@@ -48,9 +48,9 @@ human-api/
 ├── start.bat           # Windows 一键启动脚本
 ├── start.sh            # Linux/Mac 一键启动脚本
 ├── static/
-│   ├── index.html      # WebUI 管理页面
+│   ├── index.html      # WebUI 管理页面（MDUI 2 组件）
 │   ├── css/
-│   │   └── style.css   # 样式文件（Claude 风格暖色主题）
+│   │   └── style.css   # 样式文件（MDUI Material Design 3 主题）
 │   └── js/
 │       └── app.js      # 前端逻辑
 ├── data/               # 配置持久化目录（自动生成）
@@ -343,10 +343,20 @@ curl -X POST http://127.0.0.1:5000/v1/chat/completions \
 
 | 区域 | 功能 |
 |------|------|
-| **顶部导航** | 项目名称、统计数据（待回复/已回复/总会话）、WebSocket 连接状态 |
-| **左侧会话列表** | 所有会话按状态排序（等待中优先），支持筛选过滤 |
-| **中间回复区** | 选中会话后显示完整对话历史，底部输入回复 |
+| **顶部导航** | 项目名称、WebSocket 连接状态指示灯 |
+| **左侧会话列表** | 分段按钮筛选（全部/等待中/已回复）、会话统计、实时会话列表 |
+| **中间回复区** | 选中会话后显示完整对话历史，底部输入回复，支持 AI 回复 |
 | **右侧设置面板** | API 密钥、超时时间、AI 配置、心跳配置、清空历史 |
+
+### 技术栈
+
+- **前端框架**：[MDUI 2](https://www.mdui.org/)（Material Design 3 Web Components），通过 CDN 引入，无需构建工具
+- **布局组件**：`<mdui-layout>`、`<mdui-top-app-bar>`、`<mdui-card>`
+- **表单组件**：`<mdui-text-field>`、`<mdui-select>`、`<mdui-switch>`
+- **交互组件**：`<mdui-button>`、`<mdui-button-icon>`、`<mdui-segmented-button-group>`、`<mdui-chip>`
+- **列表组件**：`<mdui-list>`、`<mdui-list-item>`
+- **实时通信**：Socket.IO 4.x
+- **图标**：Material Icons Outlined
 
 ### 系统设置
 
@@ -561,6 +571,57 @@ A: 每次修改代码后同时推送到两个远程仓库：
 git push origin main    # 推送到 GitHub
 git push hf main        # 推送到 HuggingFace
 ```
+
+---
+
+## 更新日志
+
+### v2.0 — 前端全面重构
+
+> 全新的 Material Design 3 界面，从零重建前端架构
+
+#### UI 框架迁移
+
+- 从自定义 CSS 迁移到 **MDUI 2**（Material Design 3 Web Components）
+- 通过 CDN 引入（`mdui.css` + `mdui.global.js`），无需 Node.js 构建工具
+- 所有原生 HTML 元素替换为 MDUI 组件：
+  - `<button>` → `<mdui-button>`
+  - `<input>` / `<textarea>` → `<mdui-text-field>`
+  - `<select>` → `<mdui-select>` + `<mdui-menu-item>`
+  - `<toggle>` → `<mdui-switch>`
+  - `<chip>` → `<mdui-chip>`
+  - 列表 → `<mdui-list>` + `<mdui-list-item>`
+  - 图标 → `<mdui-icon>`（Material Icons Outlined）
+
+#### 布局重构
+
+- 使用 `<mdui-layout>` + `<mdui-top-app-bar>` 构建全局布局框架
+- 三栏 flex 布局：左侧会话列表 / 中间聊天面板 / 右侧设置面板
+- 所有面板使用 `<mdui-card>` 卡片容器，圆角 + 阴影
+
+#### 交互优化
+
+- 顶栏精简：移除 4 个统计 chip，连接状态改为标题旁的绿色/红色小圆点
+- 会话筛选器：从下拉 `<select>` 改为 `<mdui-segmented-button-group>` 扁平分段按钮
+- 会话统计：移至侧边栏标题旁，药丸样式轻量展示
+- 回复区域：提示文字靠左，AI 回复（outlined）与发送（filled）按钮视觉层级区分
+- 设置面板：保存按钮统一使用 `tonal` 样式，危险操作使用 `outlined` 降低视觉权重
+- 消息气泡：保留原有气泡样式，适配 MDUI CSS 变量
+- 所有按钮加载状态使用 MDUI 原生 `loading` 属性
+- 输入框 `Ctrl+Enter` 快捷键兼容 MDUI Shadow DOM
+
+#### 响应式设计
+
+- 1100px 以下：压缩侧边栏和设置面板宽度
+- 840px 以下：隐藏右侧设置面板
+- 600px 以下：仅显示侧边栏，隐藏聊天面板
+
+#### 技术细节
+
+- CDN 链接：`https://cdn.jsdelivr.net/npm/mdui@2/mdui.css` 和 `mdui.global.js`
+- 字体：Google Fonts Material Icons Outlined（含 preconnect 优化）
+- MDUI CSS 变量：使用 `--mdui-color-primary`、`--mdui-color-surface-container-low` 等设计令牌
+- `.btn-danger` 通过 `--mdui-button-text-color` 和 `--mdui-button-outline-color` 穿透 Shadow DOM
 
 ---
 
