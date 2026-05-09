@@ -42,6 +42,9 @@
         settingHeartbeatEnabled: $("#setting-heartbeat-enabled"),
         settingHeartbeatPatterns: $("#setting-heartbeat-patterns"),
         btnSaveHeartbeatConfig: $("#btn-save-heartbeat-config"),
+        btnDarkMode: $("#btn-dark-mode"),
+        btnExportJson: $("#btn-export-json"),
+        btnExportTxt: $("#btn-export-txt"),
     };
 
     function toast(msg, type) {
@@ -510,6 +513,31 @@
             .catch(function (err) { toast("网络错误: " + err.message, "error"); });
     }
 
+    function toggleDarkMode() {
+        var isDark = document.documentElement.classList.toggle("mdui-theme-dark");
+        localStorage.setItem("human-api-dark", isDark ? "1" : "0");
+        dom.btnDarkMode.setAttribute("icon", isDark ? "light_mode--outlined" : "dark_mode--outlined");
+    }
+
+    function initDarkMode() {
+        var saved = localStorage.getItem("human-api-dark");
+        if (saved === "1") {
+            document.documentElement.classList.add("mdui-theme-dark");
+            dom.btnDarkMode.setAttribute("icon", "light_mode--outlined");
+        }
+    }
+
+    function exportData(format) {
+        var url = "/api/admin/export?format=" + format;
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = "human-api-export." + format;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        toast("正在导出 " + format.toUpperCase() + " 文件...");
+    }
+
     function bindEvents() {
         dom.btnSendReply.addEventListener("click", sendReply);
         dom.btnAiReply.addEventListener("click", sendAiReply);
@@ -549,9 +577,13 @@
         dom.btnSaveHeartbeatConfig.addEventListener("click", saveHeartbeatConfig);
         dom.btnClearAll.addEventListener("click", clearAllSessions);
         if (dom.btnClearSidebar) dom.btnClearSidebar.addEventListener("click", clearAllSessions);
+        dom.btnDarkMode.addEventListener("click", toggleDarkMode);
+        dom.btnExportJson.addEventListener("click", function () { exportData("json"); });
+        dom.btnExportTxt.addEventListener("click", function () { exportData("txt"); });
     }
 
     function init() {
+        initDarkMode();
         initSocket();
         bindEvents();
         loadConfig();

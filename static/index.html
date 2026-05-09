@@ -20,6 +20,7 @@
             background: #f5f5f5;
             transition: opacity 0.4s;
         }
+        .mdui-theme-dark .app-loader { background: #1c1b1f; }
         .app-loader.hide { opacity: 0; pointer-events: none; }
         .app-loader-spinner {
             width: 36px; height: 36px;
@@ -28,8 +29,10 @@
             border-radius: 50%;
             animation: loader-spin 0.8s linear infinite;
         }
+        .mdui-theme-dark .app-loader-spinner { border-color: #444; border-top-color: #d0bcff; }
         @keyframes loader-spin { to { transform: rotate(360deg); } }
         .app-loader-text { font: 14px/1.4 system-ui, sans-serif; color: #666; }
+        .mdui-theme-dark .app-loader-text { color: #aaa; }
     </style>
 </head>
 <body>
@@ -46,6 +49,7 @@
             Human API Console
             <span class="ws-dot" id="ws-dot" title="连接中"></span>
         </mdui-top-app-bar-title>
+        <mdui-button-icon id="btn-dark-mode" icon="dark_mode--outlined" title="切换暗色模式"></mdui-button-icon>
     </mdui-top-app-bar>
 
     <mdui-layout-main class="main-content">
@@ -152,6 +156,16 @@
                     </div>
                     <mdui-text-field id="setting-heartbeat-patterns" label="心跳关键词" placeholder="hi, hello, ping, test" variant="outlined"></mdui-text-field>
                     <mdui-button id="btn-save-heartbeat-config" variant="tonal" full-width>保存心跳设置</mdui-button>
+
+                    <mdui-divider></mdui-divider>
+
+                    <div class="settings-section-title">
+                        <mdui-icon name="download--outlined" style="font-size:18px;vertical-align:middle;margin-right:6px;"></mdui-icon>导出数据
+                    </div>
+                    <div style="display:flex;gap:6px;">
+                        <mdui-button id="btn-export-json" variant="tonal" style="flex:1;" icon="data_object--outlined">JSON</mdui-button>
+                        <mdui-button id="btn-export-txt" variant="tonal" style="flex:1;" icon="description--outlined">TXT</mdui-button>
+                    </div>
 
                     <mdui-divider></mdui-divider>
 

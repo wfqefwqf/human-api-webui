@@ -419,3 +419,16 @@ mdui-top-app-bar-title {
         display: none;
     }
 }
+
+/* ==================== 暗色模式 ==================== */
+.mdui-theme-dark {
+    color-scheme: dark;
+}
+
+.mdui-theme-dark .ws-dot.connected {
+    background: #66bb6a;
+}
+
+.mdui-theme-dark .ws-dot.disconnected {
+    background: var(--mdui-color-error);
+}

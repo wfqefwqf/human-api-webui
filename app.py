@@ -25,6 +25,7 @@ from flask_socketio import SocketIO, emit
 import requests as http_requests
 
 import config as cfg
+import database as db
 
 # ==================== 日志配置 ====================
 LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
@@ -48,6 +49,8 @@ app = Flask(__name__, static_folder="static", static_url_path="/static")
 app.config["SECRET_KEY"] = os.urandom(24).hex()
 
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+
+db.init_db()
 
 # ==================== 会话存储 ====================
 # sessions 结构：
@@ -243,11 +246,12 @@ def _auto_host_thread(session_id):
                 return
             session["reply_content"] = ai_content
             session["status"] = "replied"
-            session["messages"].append({"role": "assistant", "content": ai_content})
             session["updated_at"] = now_iso()
             session["request_event"].set()
 
         remove_from_pending(session_id)
+        db.update_session_status(session_id, "replied", session["updated_at"])
+        db.save_message(session_id, "assistant", ai_content, session["updated_at"])
         logger.info(f"[AI自动托管成功] 会话 {session_id} | 回复: {ai_content[:80]}...")
         socketio.emit("session_updated", serialize_session(sessions.get(session_id)))
 
@@ -373,6 +377,8 @@ def chat_completions():
             }
 
             add_to_pending(session_id)
+            db.save_session(sessions[session_id])
+            db.save_messages_bulk(session_id, list(messages))
             logger.info(f"[新请求] 会话 {session_id} | 模型: {model} | 提问: {user_query[:80]}...")
 
             socketio.emit("new_request", {
@@ -404,14 +410,19 @@ def chat_completions():
 
         if replied and session["reply_content"]:
             answer = session["reply_content"]
-            session["status"] = "replied"
             session["messages"].append({"role": "assistant", "content": answer})
-            session["updated_at"] = now_iso()
+            if session["status"] != "replied":
+                session["status"] = "replied"
+                session["updated_at"] = now_iso()
+                db.update_session_status(session_id, "replied", session["updated_at"])
+                db.save_message(session_id, "assistant", answer, session["updated_at"])
         else:
             answer = cfg.get("timeout_reply", "抱歉，当前人工客服繁忙，请稍后再试。")
             session["status"] = "timeout"
             session["messages"].append({"role": "assistant", "content": answer})
             session["updated_at"] = now_iso()
+            db.update_session_status(session_id, "timeout", session["updated_at"])
+            db.save_message(session_id, "assistant", answer, session["updated_at"])
             logger.warning(f"[超时] 会话 {session_id} 超时未回复")
 
     remove_from_pending(session_id)
@@ -1034,6 +1045,8 @@ def admin_reply():
         session["request_event"].set()
 
     remove_from_pending(session_id)
+    db.update_session_status(session_id, "replied", session["updated_at"])
+    db.save_message(session_id, "assistant", content, session["updated_at"])
     logger.info(f"[WebUI回复] 会话 {session_id} | 回复: {content[:80]}...")
 
     socketio.emit("session_updated", serialize_session(session))
@@ -1081,11 +1094,12 @@ def admin_ai_reply():
 
         session["reply_content"] = ai_content
         session["status"] = "replied"
-        session["messages"].append({"role": "assistant", "content": ai_content})
         session["updated_at"] = now_iso()
         session["request_event"].set()
 
     remove_from_pending(session_id)
+    db.update_session_status(session_id, "replied", session["updated_at"])
+    db.save_message(session_id, "assistant", ai_content, session["updated_at"])
     logger.info(f"[AI回复成功] 会话 {session_id} | 回复: {ai_content[:80]}...")
 
     socketio.emit("session_updated", serialize_session(session))
@@ -1167,8 +1181,56 @@ def admin_clear_sessions():
         sessions.clear()
     with pending_lock:
         pending_queue.clear()
+    db.clear_all()
     logger.info("[清空] 所有会话已清空")
     return jsonify({"success": True})
+
+
+@app.route("/api/admin/export/<session_id>", methods=["GET"])
+def admin_export_session(session_id):
+    session, messages = db.export_session_messages(session_id)
+    if not session:
+        return jsonify({"error": "会话不存在"}), 404
+    data = {"session": session, "messages": messages}
+    content = json.dumps(data, ensure_ascii=False, indent=2)
+    return Response(
+        content,
+        mimetype="application/json",
+        headers={"Content-Disposition": f"attachment; filename={session_id}.json"}
+    )
+
+
+@app.route("/api/admin/export", methods=["GET"])
+def admin_export_all():
+    fmt = request.args.get("format", "json")
+    all_data = db.export_all_messages()
+    if not all_data:
+        return jsonify({"error": "没有可导出的会话"}), 404
+    if fmt == "txt":
+        lines = []
+        for item in all_data:
+            s = item["session"]
+            lines.append(f"{'='*60}")
+            lines.append(f"会话: {s['id']}  模型: {s['model']}  状态: {s['status']}")
+            lines.append(f"创建时间: {s['created_at']}  更新时间: {s['updated_at']}")
+            lines.append(f"{'-'*60}")
+            for m in item["messages"]:
+                label = {"user": "用户", "assistant": "AI", "system": "系统"}.get(m["role"], m["role"])
+                lines.append(f"[{label}] {m['content']}")
+            lines.append("")
+        content = "\n".join(lines)
+        return Response(
+            content,
+            mimetype="text/plain; charset=utf-8",
+            headers={"Content-Disposition": "attachment; filename=human-api-export.txt"}
+        )
+    else:
+        content = json.dumps(all_data, ensure_ascii=False, indent=2)
+        return Response(
+            content,
+            mimetype="application/json",
+            headers={"Content-Disposition": "attachment; filename=human-api-export.json"}
+        )
 
 
 # ==================== WebSocket 事件 ====================
@@ -1178,6 +1240,20 @@ def handle_connect():
     logger.info(f"[WS] 客户端连接: {request.sid}")
     cleanup_expired_sessions()
     with sessions_lock:
+        if not sessions:
+            db_sessions = db.load_all_sessions()
+            for ds in db_sessions:
+                if ds["status"] == "waiting":
+                    ds["status"] = "timeout"
+                    db.update_session_status(ds["id"], "timeout")
+                messages = db.load_messages(ds["id"])
+                sessions[ds["id"]] = {
+                    **ds,
+                    "messages": messages,
+                    "request_event": None,
+                    "reply_content": None,
+                    "pending_message": {},
+                }
         all_sessions = [serialize_session(s) for s in sessions.values()]
     emit("init_data", {
         "sessions": all_sessions,
