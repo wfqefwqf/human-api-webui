@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
+*.db-journal
 data/config.json
 data/human-api.db
 data/human-api.db-wal
@@ -7,3 +8,4 @@ data/human-api.db-shm
 logs/*.log
 .env
 dist/
+temp_backup/
