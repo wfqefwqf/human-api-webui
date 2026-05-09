@@ -79,24 +79,6 @@ mdui-top-app-bar-title {
     font-size: 12px;
 }
 
-.ws-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--mdui-color-outline);
-    transition: background 0.3s;
-    flex-shrink: 0;
-}
-
-.ws-dot.connected {
-    background: #4caf50;
-}
-
-.ws-dot.disconnected {
-    background: var(--mdui-color-error);
-}
-
 .session-list {
     flex: 1;
     overflow-y: auto;
@@ -423,12 +405,4 @@ mdui-top-app-bar-title {
 /* ==================== 暗色模式 ==================== */
 .mdui-theme-dark {
     color-scheme: dark;
-}
-
-.mdui-theme-dark .ws-dot.connected {
-    background: #66bb6a;
-}
-
-.mdui-theme-dark .ws-dot.disconnected {
-    background: var(--mdui-color-error);
 }

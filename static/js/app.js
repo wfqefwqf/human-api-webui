@@ -27,7 +27,6 @@
         btnClearSidebar: $("#btn-clear-sidebar"),
         filterGroup: $("#filter-group"),
         sidebarStats: $("#sidebar-stats"),
-        wsDot: $("#ws-dot"),
         settingApiKey: $("#setting-api-key"),
         settingTimeout: $("#setting-timeout"),
         settingTimeoutReply: $("#setting-timeout-reply"),
@@ -97,15 +96,9 @@
             reconnectionDelay: 2000,
         });
 
-        socket.on("connect", function () {
-            dom.wsDot.className = "ws-dot connected";
-            dom.wsDot.title = "已连接";
-        });
+        socket.on("connect", function () {});
 
-        socket.on("disconnect", function () {
-            dom.wsDot.className = "ws-dot disconnected";
-            dom.wsDot.title = "已断开";
-        });
+        socket.on("disconnect", function () {});
 
         socket.on("init_data", function (data) {
             if (data.sessions) {
